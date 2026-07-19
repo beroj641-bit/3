@@ -252,18 +252,6 @@ async function initApp() {
   const user = getTelegramUser(tg);
   const currentPage = getCurrentPage();
 
-  if (!tg || !tg.initData || !user || !user.id) {
-    showAppMessage('Открой приложение кнопкой внутри Telegram-бота.');
-
-    const submitBtn = document.querySelector('[data-submit-application]');
-    if (submitBtn) {
-      submitBtn.addEventListener('click', () => {
-        showAppMessage('Для отправки анкеты открой приложение через Telegram-бота.');
-      });
-    }
-    return;
-  }
-
   try {
     const status = await fetchStatus(user.id, tg.initData);
     if (redirectToStatus(status)) return;
