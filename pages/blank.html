@@ -21,7 +21,7 @@
       }
     })();
   </script>
-  <script src="/js/app.js?v=20260719-2" defer></script>
+  <script src="/js/app.js?v=20260719-3" defer></script>
   <style>
     :root {
       --bg: #0a0a0a;
@@ -385,6 +385,7 @@
     .actions.age-escape-zone {
       min-height: 150px;
       overflow: visible;
+      position: relative;
     }
     .submit-btn {
       width: 100%;
@@ -405,17 +406,26 @@
     }
     .submit-btn.is-escaping {
       width: 52%;
-      align-self: flex-start;
-      position: relative;
+      position: absolute;
+      left: 0;
+      top: 0;
       z-index: 4;
-      will-change: transform;
+      box-shadow: none;
+      filter: none;
+      transform: none;
       transition:
         width .2s ease,
-        transform .16s cubic-bezier(0.22, 0.61, 0.36, 1),
-        box-shadow .18s ease,
-        filter .16s ease,
+        left .14s cubic-bezier(0.22, 0.61, 0.36, 1),
+        top .14s cubic-bezier(0.22, 0.61, 0.36, 1),
         border-color .18s ease,
         background .18s ease;
+    }
+    .submit-btn.is-escaping:hover,
+    .submit-btn.is-escaping:active,
+    .submit-btn.is-escaping[aria-disabled="true"] {
+      box-shadow: none;
+      filter: none;
+      transform: none;
     }
     .submit-btn:hover {
       transform: translateY(-1px);
@@ -568,9 +578,9 @@
           <div class="field">
             <span class="label">С чем будешь играть?</span>
             <div class="pills">
+              <label class="pill radio-pill"><input type="radio" name="play_chat_only" value="chat" checked><span class="pill-text">Только чат</span></label>
               <label class="pill"><input type="checkbox" name="play_with_webcam" value="cam"><span class="pill-text">вебка</span></label>
               <label class="pill"><input type="checkbox" name="play_with_voice" value="voice"><span class="pill-text">войс</span></label>
-              <label class="pill radio-pill"><input type="radio" name="play_chat_only" value="chat"><span class="pill-text">Только чат</span></label>
             </div>
           </div>
 
@@ -1007,7 +1017,8 @@
           const resetEscapingButton = () => {
             if (!submitBtn) return;
             submitBtn.classList.remove('is-escaping');
-            submitBtn.style.removeProperty('transform');
+            submitBtn.style.removeProperty('left');
+            submitBtn.style.removeProperty('top');
             delete submitBtn.dataset.escapePosition;
             if (actions) actions.classList.remove('age-escape-zone');
           };
@@ -1056,8 +1067,8 @@
               (position) => position.name !== submitBtn.dataset.escapePosition
             ) || positions[0];
             submitBtn.dataset.escapePosition = target.name;
-            submitBtn.style.transform =
-              `translate3d(${target.x}px, ${target.y}px, 0)`;
+            submitBtn.style.left = `${target.x}px`;
+            submitBtn.style.top = `${target.y}px`;
           };
 
           const updateForbiddenAge = () => {
