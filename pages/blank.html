@@ -21,7 +21,7 @@
       }
     })();
   </script>
-  <script src="/js/app.js?v=20260719-3" defer></script>
+  <script src="/js/app.js?v=20260719-4" defer></script>
   <style>
     :root {
       --bg: #0a0a0a;
@@ -508,6 +508,60 @@
       background: rgba(125, 208, 255, 0.08);
       color: #d9f0ff;
     }
+    .diagnostic-panel {
+      width: 100%;
+      border: 1px solid #303030;
+      border-radius: 14px;
+      background: #111;
+      overflow: hidden;
+    }
+    .diagnostic-panel summary {
+      padding: 12px 14px;
+      color: #b9bdc7;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+    }
+    .diagnostic-panel[open] summary {
+      border-bottom: 1px solid #2a2a2a;
+      color: #f0f0f0;
+    }
+    .diagnostic-content {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+    .diagnostic-output {
+      width: 100%;
+      max-height: 250px;
+      margin: 0;
+      padding: 10px;
+      overflow: auto;
+      border-radius: 10px;
+      background: #080808;
+      color: #bfe1ff;
+      font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      user-select: text;
+    }
+    .diagnostic-copy {
+      min-height: 40px;
+      border: 1px solid #3b3b3b;
+      border-radius: 10px;
+      background: #202020;
+      color: #f5f5f5;
+      font-weight: 750;
+      cursor: pointer;
+    }
+    .diagnostic-copy:active { transform: scale(0.98); }
+    .diagnostic-copy-status {
+      min-height: 18px;
+      color: #9ea3ad;
+      font-size: 12px;
+      line-height: 1.4;
+    }
     .status-links { display: flex; flex-direction: column; gap: 8px; align-items: center; margin-top: 4px; }
     .status-links .link-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
     .mini-btn {
@@ -600,6 +654,15 @@
           <p class="form-alert" id="formMessage" hidden role="status" aria-live="polite"></p>
           <button type="button" class="submit-btn" id="submitBtn" data-submit-application aria-disabled="false">Отправить заявку</button>
         </div>
+
+        <details class="diagnostic-panel" id="diagnosticPanel">
+          <summary>Диагностика отправки</summary>
+          <div class="diagnostic-content">
+            <pre class="diagnostic-output" id="diagnosticOutput">Журнал ещё пуст.</pre>
+            <button class="diagnostic-copy" id="copyDiagnosticLog" type="button">Скопировать лог</button>
+            <span class="diagnostic-copy-status" id="diagnosticCopyStatus" aria-live="polite"></span>
+          </div>
+        </details>
       </div>
     </div>
   </main>
