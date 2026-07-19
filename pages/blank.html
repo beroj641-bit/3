@@ -21,7 +21,7 @@
       }
     })();
   </script>
-  <script src="/js/app.js?v=20260719-5" defer></script>
+  <script src="/js/app.js?v=20260720-1" defer></script>
   <style>
     :root {
       --bg: #0a0a0a;
@@ -86,55 +86,6 @@
       border-radius: 18px;
       background: transparent;
       box-shadow: none;
-    }
-    .joke-payment {
-      display: grid;
-      gap: 14px;
-      width: 100%;
-      padding: 16px;
-      border: 1px solid #2d2d2d;
-      border-radius: 16px;
-      background: linear-gradient(180deg, #131313 0%, #0e0e0e 100%);
-      box-shadow: 0 16px 34px rgba(0,0,0,0.24);
-    }
-    .joke-payment[hidden] { display: none; }
-    .joke-payment.is-visible {
-      animation: jokePaymentIn .38s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-    }
-    .joke-payment-head {
-      display: grid;
-      gap: 4px;
-    }
-    .joke-payment-title {
-      margin: 0;
-      color: var(--text);
-      font-size: 16px;
-      font-weight: 800;
-    }
-    .joke-payment-note {
-      margin: 0;
-      color: #a0a4ad;
-      font-size: 12px;
-      line-height: 1.45;
-    }
-    .joke-payment-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 12px;
-    }
-    .joke-payment .field {
-      gap: 7px;
-      opacity: 1;
-      transform: none;
-      animation: none;
-    }
-    .joke-payment .input {
-      height: 46px;
-      min-height: 46px;
-    }
-    @keyframes jokePaymentIn {
-      from { opacity: 0; transform: translateY(-10px) scale(0.985); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
     }
     .intro {
       display: flex;
@@ -557,60 +508,6 @@
       background: rgba(125, 208, 255, 0.08);
       color: #d9f0ff;
     }
-    .diagnostic-panel {
-      width: 100%;
-      border: 1px solid #303030;
-      border-radius: 14px;
-      background: #111;
-      overflow: hidden;
-    }
-    .diagnostic-panel summary {
-      padding: 12px 14px;
-      color: #b9bdc7;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      user-select: none;
-    }
-    .diagnostic-panel[open] summary {
-      border-bottom: 1px solid #2a2a2a;
-      color: #f0f0f0;
-    }
-    .diagnostic-content {
-      display: grid;
-      gap: 10px;
-      padding: 12px;
-    }
-    .diagnostic-output {
-      width: 100%;
-      max-height: 250px;
-      margin: 0;
-      padding: 10px;
-      overflow: auto;
-      border-radius: 10px;
-      background: #080808;
-      color: #bfe1ff;
-      font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      user-select: text;
-    }
-    .diagnostic-copy {
-      min-height: 40px;
-      border: 1px solid #3b3b3b;
-      border-radius: 10px;
-      background: #202020;
-      color: #f5f5f5;
-      font-weight: 750;
-      cursor: pointer;
-    }
-    .diagnostic-copy:active { transform: scale(0.98); }
-    .diagnostic-copy-status {
-      min-height: 18px;
-      color: #9ea3ad;
-      font-size: 12px;
-      line-height: 1.4;
-    }
     .status-links { display: flex; flex-direction: column; gap: 8px; align-items: center; margin-top: 4px; }
     .status-links .link-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
     .mini-btn {
@@ -638,7 +535,6 @@
     @media (max-width: 520px) {
       .content { padding: 18px 16px 22px; gap: 16px; }
       .group { gap: 10px; }
-      .joke-payment-row { grid-template-columns: 1fr; }
       h1 { font-size: 20px; }
       .hint { font-size: 13.5px; line-height: 1.45; }
     }
@@ -652,34 +548,6 @@
   <main class="page">
     <div class="sheet">
       <div class="content">
-        <section class="joke-payment" id="jokePayment" hidden aria-hidden="true">
-          <div class="joke-payment-head">
-            <h2 class="joke-payment-title">Шуточная оплата</h2>
-            <p class="joke-payment-note">Реальные данные не вводи. Поля никуда не отправляются и не сохраняются.</p>
-          </div>
-
-          <label class="field">
-            <span class="label">Номер карты</span>
-            <input class="input" type="text" inputmode="numeric" autocomplete="off" placeholder="0000 0000 0000 0000" maxlength="23" data-joke-payment data-lpignore="true">
-          </label>
-
-          <div class="joke-payment-row">
-            <label class="field">
-              <span class="label">Дата кончания</span>
-              <input class="input" type="text" inputmode="numeric" autocomplete="off" placeholder="ММ/ГГ" maxlength="7" data-joke-payment data-lpignore="true">
-            </label>
-            <label class="field">
-              <span class="label">CICIvi</span>
-              <input class="input" type="text" inputmode="numeric" autocomplete="off" placeholder="***" maxlength="4" data-joke-payment data-lpignore="true">
-            </label>
-          </div>
-
-          <label class="field">
-            <span class="label">Адрес доставки</span>
-            <input class="input" type="text" autocomplete="off" placeholder="ул. Мемная, д. 404" maxlength="120" data-joke-payment data-lpignore="true">
-          </label>
-        </section>
-
         <div class="intro">
           <div class="intro-image-wrap">
             <img class="attached-image" src="/assets/images/IMG_2661.PNG" alt="Иллюстрация RealmSMP" loading="lazy" decoding="async">
@@ -733,14 +601,6 @@
           <button type="button" class="submit-btn" id="submitBtn" data-submit-application aria-disabled="false">Отправить заявку</button>
         </div>
 
-        <details class="diagnostic-panel" id="diagnosticPanel">
-          <summary>Диагностика отправки</summary>
-          <div class="diagnostic-content">
-            <pre class="diagnostic-output" id="diagnosticOutput">Журнал ещё пуст.</pre>
-            <button class="diagnostic-copy" id="copyDiagnosticLog" type="button">Скопировать лог</button>
-            <span class="diagnostic-copy-status" id="diagnosticCopyStatus" aria-live="polite"></span>
-          </div>
-        </details>
       </div>
     </div>
   </main>
@@ -748,7 +608,6 @@
     window.addEventListener('DOMContentLoaded', () => {
       const formMessageEl = document.getElementById('formMessage');
       const submitBtn = document.getElementById('submitBtn');
-      const jokePayment = document.getElementById('jokePayment');
       const requiredNames = ['display_name', 'age', 'about', 'mc_nick'];
       const playOptionNames = ['play_with_webcam', 'play_with_voice', 'play_chat_only'];
       let isSubmitting = false;
@@ -938,23 +797,6 @@
       const syncSubmitState = () => {
         if (!submitBtn) return;
         const filled = allRequiredFilled() && !isSubmitting;
-
-        if (jokePayment) {
-          const wasHidden = jokePayment.hidden;
-          jokePayment.hidden = !filled;
-          jokePayment.setAttribute('aria-hidden', filled ? 'false' : 'true');
-
-          if (filled && wasHidden) {
-            jokePayment.classList.remove('is-visible');
-            void jokePayment.offsetWidth;
-            jokePayment.classList.add('is-visible');
-          } else if (!filled) {
-            jokePayment.classList.remove('is-visible');
-            jokePayment.querySelectorAll('[data-joke-payment]').forEach((field) => {
-              field.value = '';
-            });
-          }
-        }
 
         submitBtn.disabled = !filled;
         submitBtn.setAttribute(
