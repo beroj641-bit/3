@@ -1,279 +1,929 @@
-/**
- * Общая логика Telegram Mini App:
- * - получает подписанные данные пользователя Telegram;
- * - узнаёт статус заявки в Google Таблице;
- * - открывает страницу нужного статуса;
- * - отправляет новую анкету;
- * - корректно открывает ссылки t.me внутри Telegram.
- */
-
-const BASE_API_URL =
-  window.__ENV && window.__ENV.API_BASE ? window.__ENV.API_BASE : '/api/gas';
-
-const STATUS_PAGES = {
-  blank: 'blank.html',
-  pending: 'pending.html',
-  accepted: 'accepted.html',
-  rejected: 'rejected.html',
-  banned: 'banned.html',
-};
-
-function getTelegram() {
-  return window.Telegram && window.Telegram.WebApp
-    ? window.Telegram.WebApp
-    : null;
-}
-
-function getTelegramUser(tg) {
-  return tg && tg.initDataUnsafe && tg.initDataUnsafe.user
-    ? tg.initDataUnsafe.user
-    : null;
-}
-
-function getCurrentPage() {
-  const file = window.location.pathname.split('/').pop() || 'index.html';
-  return file.replace(/\.html$/i, '') || 'index';
-}
-
-function getAppBasePath() {
-  const path = window.location.pathname;
-  const pagesIndex = path.lastIndexOf('/pages/');
-
-  if (pagesIndex >= 0) {
-    return path.slice(0, pagesIndex + 1);
-  }
-
-  if (path.endsWith('/')) return path;
-  return path.slice(0, path.lastIndexOf('/') + 1);
-}
-
-function redirectToStatus(status) {
-  const targetFile = STATUS_PAGES[status];
-  if (!targetFile) return false;
-
-  const targetPath = `${getAppBasePath()}pages/${targetFile}`;
-  const targetUrl = new URL(targetPath, window.location.origin);
-
-  if (window.location.pathname !== targetUrl.pathname) {
-    window.location.replace(targetUrl.href);
-    return true;
-  }
-
-  return false;
-}
-
-function showAppMessage(text, variant = 'error') {
-  const message = document.getElementById('formMessage') ||
-    document.getElementById('appMessage');
-
-  if (message) {
-    message.hidden = !text;
-    message.textContent = text || '';
-    message.classList.remove('error', 'success');
-    if (variant === 'error') message.classList.add('error');
-    if (variant === 'success') message.classList.add('success');
-    return;
-  }
-
-  const tg = getTelegram();
-  if (text && tg && typeof tg.showAlert === 'function') {
-    tg.showAlert(text);
-    return;
-  }
-
-  if (text) window.alert(text);
-}
-
-function createApiUrl(action) {
-  const url = new URL(BASE_API_URL, window.location.origin);
-  url.searchParams.set('action', action);
-  return url;
-}
-
-async function parseApiResponse(res, errorCode) {
-  const responseText = await res.text();
-  let json;
-
-  try {
-    json = JSON.parse(responseText);
-  } catch (_) {
-    console.error('API returned invalid JSON:', res.status, responseText);
-    throw new Error(errorCode);
-  }
-
-  if (!res.ok || json.status !== 'ok') {
-    console.error('API request failed:', res.status, json);
-    throw new Error(json.error || errorCode);
-  }
-
-  return json;
-}
-
-async function fetchStatus(telegramId, initData) {
-  const url = createApiUrl('status');
-  url.searchParams.set('telegram_id', String(telegramId));
-  url.searchParams.set('init_data', initData);
-  url.searchParams.set('t', String(Date.now()));
-
-  const res = await fetch(url.href, {
-    method: 'GET',
-    cache: 'no-store',
-  });
-
-  const json = await parseApiResponse(res, 'status_fetch_failed');
-  return json.data.status;
-}
-
-async function submitApplication(data) {
-  const url = createApiUrl('submit');
-  const res = await fetch(url.href, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify(data),
-    cache: 'no-store',
-  });
-
-  const json = await parseApiResponse(res, 'submit_failed');
-  return json.data.status;
-}
-
-function bindTelegramLinks(tg) {
-  document.querySelectorAll('a[href]').forEach((link) => {
-    const rawHref = link.getAttribute('href');
-    if (!rawHref) return;
-
-    let url;
-    try {
-      url = new URL(rawHref, window.location.href);
-    } catch (_) {
-      return;
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#000000">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Анкета RealmSMP — демо</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    (function earlyReady() {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (!tg) return;
+      try {
+        if (typeof tg.ready === 'function') tg.ready();
+        if (typeof tg.expand === 'function') tg.expand();
+      } catch (_) {
+        /* ignore */
+      }
+    })();
+  </script>
+  <script src="/js/app.js" defer></script>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --text: #f5f5f7;
+      --muted: #a0a4ad;
+      --field: #151515;
+      --stroke: #262626;
+      --accent: #7dd0ff;
+      --accent-dim: #0f2a36;
     }
-
-    const isTelegramLink =
-      url.hostname === 't.me' || url.hostname === 'telegram.me';
-
-    if (!isTelegramLink) return;
-
-    link.addEventListener('click', (event) => {
-      if (!tg || typeof tg.openTelegramLink !== 'function') return;
-
-      event.preventDefault();
-      url.protocol = 'https:';
-      tg.openTelegramLink(url.href);
-    });
-  });
-}
-
-function collectFormData() {
-  const formData = {};
-
-  document.querySelectorAll('input[name], textarea[name]').forEach((el) => {
-    formData[el.name] = el.type === 'checkbox' ? el.checked : el.value.trim();
-  });
-
-  return formData;
-}
-
-function validateForm(data) {
-  if (!data.display_name || !data.age || !data.about || !data.mc_nick) {
-    return 'Заполни все обязательные поля.';
-  }
-
-  if (!/^\d{1,2}$/.test(data.age)) {
-    return 'Возраст должен состоять из одной или двух цифр.';
-  }
-
-  if (!data.play_with_webcam && !data.play_with_voice) {
-    return 'Выбери хотя бы один вариант: вебка или войс.';
-  }
-
-  return '';
-}
-
-function bindApplicationForm(tg, user) {
-  const submitBtn = document.querySelector('[data-submit-application]');
-  if (!submitBtn) return;
-
-  submitBtn.addEventListener('click', async () => {
-    if (submitBtn.dataset.submitting === 'true') return;
-
-    const formData = collectFormData();
-    const validationError = validateForm(formData);
-    if (validationError) {
-      showAppMessage(validationError);
-      return;
+    * { box-sizing: border-box; }
+    html, body {
+      -webkit-text-size-adjust: 100%;
+      overscroll-behavior: none;
     }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      justify-content: center;
+      padding: 0;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: pageIn .5s ease forwards .1s;
+    }
+    body.page-leave {
+      animation: pageOut .38s ease forwards;
+      pointer-events: none;
+    }
+    main.page {
+      position: relative;
+      z-index: 2;
+      width: min(430px, 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 22px 0 32px;
+      padding-bottom: calc(32px + env(safe-area-inset-bottom));
+    }
+    .sheet {
+      width: 100%;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: translateY(14px);
+      animation: sheetIn .55s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    }
+    .content {
+      margin-top: 18px;
+      padding: 26px 22px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      opacity: 0;
+      transform: translateY(12px);
+      animation: sheetIn .55s cubic-bezier(0.22, 0.61, 0.36, 1) .12s forwards;
+      border-radius: 18px;
+      background: transparent;
+      box-shadow: none;
+    }
+    .intro {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      text-align: center;
+    }
+    .intro-text { width: 100%; }
+    .intro h1,
+    .intro .hint {
+      text-align: center;
+      transition: color .28s ease, text-shadow .28s ease;
+    }
+    .intro-text.secret-error h1,
+    .intro-text.secret-error .hint {
+      color: #ff4d5a;
+      text-shadow: 0 0 14px rgba(255, 77, 90, 0.42);
+    }
+    .secret-word {
+      display: inline-block;
+      white-space: nowrap;
+    }
+    .secret-letter {
+      display: inline-block;
+      border-radius: 4px;
+      cursor: pointer;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform .14s ease, filter .18s ease;
+    }
+    .secret-letter:hover { transform: translateY(-1px); }
+    .secret-letter:active { transform: scale(0.9); }
+    .secret-letter.secret-hit {
+      animation: secretLetterHit .38s ease;
+    }
+    .intro-image-wrap {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: itemIn .45s ease-out .02s forwards;
+    }
+    .intro h1,
+    .intro .hint {
+      opacity: 0;
+      transform: translateY(10px);
+      animation: itemIn .42s ease-out forwards;
+    }
+    .intro h1 { animation-delay: .12s; }
+    .intro .hint { animation-delay: .2s; }
+    .attached-image {
+      width: 120px;
+      height: 120px;
+      border-radius: 14px;
+      object-fit: cover;
+      display: block;
+      flex-shrink: 0;
+      transform-origin: 50% 100%;
+      animation: sway 3.4s ease-in-out .4s infinite alternate;
+      will-change: transform;
+      transition: transform .2s ease, box-shadow .2s ease, filter .2s ease, opacity .22s ease;
+    }
+    .attached-image.secret-switching {
+      opacity: 0;
+      filter: blur(3px) saturate(1.15);
+    }
+    .attached-image:hover {
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.32);
+      filter: saturate(1.08);
+    }
+    h1 {
+      margin: 0 0 2px;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .group { display: flex; flex-direction: column; gap: 14px; }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: itemIn .45s ease-out forwards;
+      transition: transform .16s ease, background-color .16s ease;
+    }
+    .group .field:nth-child(1) { animation-delay: .28s; animation-duration: .42s; }
+    .group .field:nth-child(2) { animation-delay: .36s; animation-duration: .48s; }
+    .group .field:nth-child(3) { animation-delay: .44s; animation-duration: .5s; }
+    .group .field:nth-child(4) { animation-delay: .52s; animation-duration: .46s; }
+    .group .field:nth-child(5) { animation-delay: .6s;  animation-duration: .52s; }
+    .content > .field.countered { animation-delay: .72s; animation-duration: .5s; }
+    .actions {
+      opacity: 0;
+      transform: translateY(10px);
+      animation: itemIn .5s ease-out .82s forwards;
+    }
+    .field:hover { transform: translateY(-1px); background-color: rgba(255,255,255,0.01); }
+    .label { font-size: 14px; font-weight: 600; }
+    .input,
+    .textarea {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--stroke);
+      background: var(--field);
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition:
+        border-color .14s ease,
+        box-shadow .18s ease,
+        background-color .2s ease,
+        transform .18s ease,
+        height .36s cubic-bezier(0.33, 0.12, 0.15, 1);
+    }
+    .input:focus,
+    .textarea:focus {
+      border-color: #b3b3b3;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.14);
+    }
+    .input:hover,
+    .textarea:hover {
+      border-color: #8b8b8b;
+      background: #1a1a1a;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.32);
+      transform: translateY(-1px);
+    }
+    .textarea {
+      height: 44px;
+      min-height: 44px;
+      max-height: 260px;
+      resize: none;
+      overflow-y: auto;
+      overflow-x: hidden;
+      line-height: 1.5;
+      will-change: height;
+    }
+    .textarea::-webkit-scrollbar { width: 0; height: 0; }
+    .textarea { scrollbar-width: none; -ms-overflow-style: none; }
+    .field.countered .textarea {
+      padding-right: 88px;
+      padding-bottom: 30px;
+    }
+    .counter {
+      position: absolute;
+      right: 12px;
+      bottom: 10px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #c2c5cd;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      pointer-events: none;
+      line-height: 1;
+      backdrop-filter: blur(6px);
+    }
+    .pills { display: flex; flex-direction: column; gap: 10px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--text);
+      user-select: none;
+      transition: transform .16s ease, color .18s ease;
+    }
+    .pill input {
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      border: 1.5px solid #6f6f6f;
+      background: #0f0f0f;
+      position: relative;
+      transition:
+        transform .18s ease,
+        box-shadow .2s ease,
+        border-color .2s ease,
+        background .2s ease;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+      cursor: pointer;
+    }
+    .pill input::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 7px;
+      height: 12px;
+      border: 2px solid transparent;
+      border-top: 0;
+      border-left: 0;
+      transform: translate(-50%, -55%) rotate(42deg) scale(0.7);
+      opacity: 0;
+      transition: opacity .18s ease, transform .2s ease;
+    }
+    .pill input:hover {
+      border-color: #c0c0c0;
+      box-shadow: 0 0 0 6px rgba(255,255,255,0.08);
+    }
+    .pill input:active { transform: scale(0.94); }
+    .pill input:focus-visible {
+      outline: 2px solid #d9d9d9;
+      outline-offset: 3px;
+    }
+    .pill input:checked {
+      background: linear-gradient(135deg, #f6f6f6 0%, #dcdcdc 60%, #c7c7c7 100%);
+      border-color: #e0e0e0;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.28), 0 0 0 2px rgba(255,255,255,0.08);
+    }
+    .pill input:checked::after {
+      opacity: 1;
+      border-bottom-color: #181818;
+      border-right-color: #181818;
+      transform: translate(-50%, -55%) rotate(42deg) scale(1);
+    }
+    .pill-text {
+      transition: color .2s ease, transform .2s ease;
+      display: inline-block;
+    }
+    .pill input:checked + .pill-text {
+      color: #f2f2f2;
+      transform: translateY(-1px);
+    }
+    .pill:hover .pill-text { color: #ffffff; transform: translateX(2px); }
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 4px;
+      position: relative;
+      z-index: 2;
+    }
+    .submit-btn {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: #f5f5f5;
+      color: #0b0b0b;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      transition:
+        transform .14s ease,
+        box-shadow .18s ease,
+        filter .16s ease,
+        border-color .18s ease,
+        background .18s ease;
+    }
+    .submit-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+      filter: saturate(1.05);
+      border-color: rgba(255,255,255,0.2);
+    }
+    .submit-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.28);
+      background: #e8e8e8;
+    }
+    .submit-btn:focus-visible {
+      outline: 2px solid #ffffff;
+      outline-offset: 3px;
+    }
+    .submit-btn:disabled,
+    .submit-btn[aria-disabled="true"] {
+      background: #1e1e1e;
+      color: #7a7a7a;
+      border-color: #2c2c2c;
+      box-shadow: none;
+      cursor: not-allowed;
+      transform: none;
+      filter: none;
+    }
+    @keyframes sheetIn {
+      from { opacity: 0; transform: translateY(14px) scale(0.995); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes itemIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes secretLetterHit {
+      0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
+      45% { transform: translateY(-3px) scale(1.2); filter: brightness(1.7); }
+    }
+    @keyframes pageIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pageOut {
+      from { opacity: 1; transform: translateY(0); }
+      to   { opacity: 0; transform: translateY(12px); }
+    }
+    @keyframes sway {
+      0%   { transform: rotate(1deg); }
+      50%  { transform: rotate(-2deg); }
+      100% { transform: rotate(1.5deg); }
+    }
+    .snow-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100dvh;
+      pointer-events: none;
+      opacity: 0.88;
+      filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.08));
+    }
+    .snow-canvas.back { z-index: 0; opacity: 0.32; }
+    .snow-canvas.front { z-index: 1; opacity: 0.45; }
+    .form-alert {
+      margin: 4px 0 0;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: #f1f1f1;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .form-alert.error {
+      border-color: rgba(255, 120, 120, 0.35);
+      background: rgba(255, 120, 120, 0.08);
+      color: #ffd8d8;
+    }
+    .form-alert.success {
+      border-color: rgba(125, 208, 255, 0.35);
+      background: rgba(125, 208, 255, 0.08);
+      color: #d9f0ff;
+    }
+    .status-links { display: flex; flex-direction: column; gap: 8px; align-items: center; margin-top: 4px; }
+    .status-links .link-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .mini-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font-weight: 700;
+      font-size: 13px;
+      text-decoration: none;
+      transition: transform .12s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+      margin-top: 2px;
+    }
+    .mini-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.06);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    }
+    .mini-btn:active { transform: translateY(0); }
+    @media (max-width: 520px) {
+      .content { padding: 18px 16px 22px; gap: 16px; }
+      .group { gap: 10px; }
+      h1 { font-size: 20px; }
+      .hint { font-size: 13.5px; line-height: 1.45; }
+    }
+    @media (max-width: 400px) {
+      .content { padding: 16px 14px 20px; gap: 14px; }
+      h1 { font-size: 19px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="sheet">
+      <div class="content">
+        <div class="intro">
+          <div class="intro-image-wrap">
+            <img class="attached-image" src="/assets/images/IMG_2661.PNG" alt="Иллюстрация RealmSMP" loading="lazy" decoding="async">
+          </div>
+          <div class="intro-text">
+            <h1>Анкета на RealmSMP</h1>
+            <p class="hint">Анкету можно подать только 1 раз.</p>
+          </div>
+        </div>
 
-    submitBtn.dataset.submitting = 'true';
-    submitBtn.disabled = true;
-    submitBtn.setAttribute('aria-disabled', 'true');
-    const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'Отправляем…';
-    showAppMessage('');
+        <div class="group">
+          <label class="field">
+            <span class="label">Твоё имя или ник</span>
+            <input class="input" type="text" name="display_name" placeholder="Mafanya" autocomplete="name" maxlength="30" required>
+          </label>
 
-    try {
-      const payload = {
-        init_data: tg.initData,
-        telegram_id: user.id,
-        telegram_username: user.username || '',
-        telegram_first_name: user.first_name || '',
-        ...formData,
+          <label class="field">
+            <span class="label">Сколько тебе лет?</span>
+            <input class="input" type="text" name="age" inputmode="numeric" pattern="[0-9]{1,2}" maxlength="2" placeholder="12" aria-label="Сколько тебе лет" required>
+          </label>
+
+          <label class="field countered">
+            <span class="label">Расскажи о себе</span>
+            <textarea class="textarea" rows="1" name="about" placeholder="кто ты, что из себя представляешь, стаж игры, ссылки на проекты/каналы" maxlength="165" required></textarea>
+            <span class="counter" data-counter="about">0/165</span>
+          </label>
+
+          <div class="field">
+            <span class="label">С чем будешь играть?</span>
+            <div class="pills">
+              <label class="pill"><input type="checkbox" name="play_with_webcam" value="cam"><span class="pill-text">вебка</span></label>
+              <label class="pill"><input type="checkbox" name="play_with_voice" value="voice"><span class="pill-text">войс</span></label>
+            </div>
+          </div>
+
+          <label class="field">
+            <span class="label">Ник в Minecraft (вайт-лист)</span>
+            <input class="input" type="text" name="mc_nick" placeholder="MishaAnimeshnik" maxlength="32" required>
+          </label>
+        </div>
+
+        <div class="field countered" style="margin-top: 6px;">
+          <span class="label">Комментарий для бота</span>
+          <textarea class="textarea" rows="1" name="bot_comment" placeholder="необезательно" aria-label="Комментарий для бота" maxlength="66"></textarea>
+          <span class="counter" data-counter="bot_comment">0/66</span>
+        </div>
+
+        <div class="actions">
+          <p class="form-alert" id="formMessage" hidden role="status" aria-live="polite"></p>
+          <button type="button" class="submit-btn" id="submitBtn" data-submit-application disabled aria-disabled="true">Отправить заявку</button>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const formMessageEl = document.getElementById('formMessage');
+      const submitBtn = document.getElementById('submitBtn');
+      const requiredNames = ['display_name', 'age', 'about', 'mc_nick'];
+      const checkboxNames = ['play_with_webcam', 'play_with_voice'];
+      let isSubmitting = false;
+
+      const setupSecretLetters = () => {
+        const introText = document.querySelector('.intro-text');
+        const title = introText && introText.querySelector('h1');
+        const hint = introText && introText.querySelector('.hint');
+        const image = document.querySelector('.attached-image');
+        if (!introText || !title || !hint || !image) return;
+
+        const splitIntoLetters = (element, lineName) => {
+          const originalText = element.textContent;
+          const fragment = document.createDocumentFragment();
+          let nNumber = 0;
+
+          element.textContent = '';
+          element.setAttribute('aria-label', originalText);
+
+          originalText.split(/(\s+)/).forEach((part) => {
+            if (!part) return;
+            if (/^\s+$/.test(part)) {
+              fragment.appendChild(document.createTextNode(part));
+              return;
+            }
+
+            const word = document.createElement('span');
+            word.className = 'secret-word';
+
+            Array.from(part).forEach((character) => {
+              const letter = document.createElement('span');
+              letter.className = 'secret-letter';
+              letter.textContent = character;
+              letter.dataset.secretLine = lineName;
+              letter.setAttribute('aria-hidden', 'true');
+
+              if (character.toLocaleLowerCase('ru-RU') === 'н') {
+                nNumber += 1;
+                letter.dataset.secretN = String(nNumber);
+              }
+
+              word.appendChild(letter);
+            });
+
+            fragment.appendChild(word);
+          });
+
+          element.appendChild(fragment);
+        };
+
+        splitIntoLetters(title, 'title');
+        splitIntoLetters(hint, 'hint');
+
+        const sequence = [
+          introText.querySelector('[data-secret-line="title"][data-secret-n="1"]'),
+          introText.querySelector('[data-secret-line="title"][data-secret-n="2"]'),
+          introText.querySelector('[data-secret-line="hint"][data-secret-n="1"]'),
+        ];
+
+        if (sequence.some((letter) => !letter)) return;
+
+        let step = 0;
+        let errorTimer = 0;
+
+        const flashError = () => {
+          window.clearTimeout(errorTimer);
+          introText.classList.remove('secret-error');
+          void introText.offsetWidth;
+          introText.classList.add('secret-error');
+          errorTimer = window.setTimeout(() => {
+            introText.classList.remove('secret-error');
+          }, 720);
+        };
+
+        const switchImage = () => {
+          const replacementSrc = '/assets/images/images.png';
+          const replacement = new Image();
+
+          replacement.addEventListener('load', () => {
+            image.classList.add('secret-switching');
+            window.setTimeout(() => {
+              image.src = replacementSrc;
+              image.alt = 'Секретная иллюстрация RealmSMP';
+              requestAnimationFrame(() => {
+                image.classList.remove('secret-switching');
+              });
+            }, 220);
+          }, { once: true });
+
+          replacement.addEventListener('error', () => {
+            console.error('Не найден файл /assets/images/images.png');
+          }, { once: true });
+
+          replacement.src = replacementSrc;
+        };
+
+        const handleLetterClick = (event) => {
+          const letter = event.target.closest('.secret-letter');
+          if (!letter || !introText.contains(letter)) return;
+
+          if (letter !== sequence[step]) {
+            flashError();
+            return;
+          }
+
+          letter.classList.remove('secret-hit');
+          void letter.offsetWidth;
+          letter.classList.add('secret-hit');
+          window.setTimeout(() => letter.classList.remove('secret-hit'), 400);
+          step += 1;
+
+          if (step === sequence.length) {
+            introText.removeEventListener('click', handleLetterClick);
+            switchImage();
+          }
+        };
+
+        introText.addEventListener('click', handleLetterClick);
       };
 
-      const status = await submitApplication(payload);
-      redirectToStatus(status);
-    } catch (err) {
-      console.error('Application submit failed:', err);
-      showAppMessage(
-        'Не удалось отправить заявку. Проверь настройку Google Apps Script и попробуй ещё раз.'
-      );
-      submitBtn.disabled = false;
-      submitBtn.setAttribute('aria-disabled', 'false');
-      submitBtn.textContent = originalText;
-      delete submitBtn.dataset.submitting;
-    }
-  });
-}
+      setupSecretLetters();
 
-async function initApp() {
-  const tg = getTelegram();
+      const setFormMessage = (text, variant = 'info') => {
+        if (!formMessageEl) return;
+        if (!text) {
+          formMessageEl.hidden = true;
+          formMessageEl.textContent = '';
+          formMessageEl.classList.remove('error', 'success');
+          return;
+        }
+        formMessageEl.hidden = false;
+        formMessageEl.textContent = text;
+        formMessageEl.classList.remove('error', 'success');
+        if (variant === 'error') formMessageEl.classList.add('error');
+        if (variant === 'success') formMessageEl.classList.add('success');
+      };
 
-  if (tg) {
-    try {
-      tg.ready();
-      tg.expand();
-    } catch (err) {
-      console.warn('Telegram WebApp initialization failed:', err);
-    }
-  }
+      const allRequiredFilled = () => {
+        const fieldsOk = requiredNames.every((name) => {
+          const el = document.querySelector(`[name="${name}"]`);
+          return el && el.value.trim().length > 0;
+        });
+        const anyChecked = checkboxNames.some((name) => {
+          const el = document.querySelector(`[name="${name}"]`);
+          return el && el.checked;
+        });
+        return fieldsOk && anyChecked;
+      };
 
-  bindTelegramLinks(tg);
+      const syncSubmitState = () => {
+        if (!submitBtn) return;
+        const filled = allRequiredFilled() && !isSubmitting;
+        submitBtn.disabled = !filled;
+        submitBtn.setAttribute('aria-disabled', filled ? 'false' : 'true');
+      };
 
-  const user = getTelegramUser(tg);
-  const currentPage = getCurrentPage();
+      const autoGrow = (el) => {
+        const minH = 44;
+        const maxH = parseFloat(getComputedStyle(el).maxHeight) || 260;
+        const setHeight = () => {
+          const current = el.offsetHeight;
+          el.style.height = 'auto';
+          const target = Math.min(Math.max(el.scrollHeight, minH), maxH);
+          if (current === target) {
+            el.style.height = `${target}px`;
+            return;
+          }
+          el.style.height = `${current}px`;
+          requestAnimationFrame(() => { el.style.height = `${target}px`; });
+        };
 
-  if (!tg || !tg.initData || !user || !user.id) {
-    if (currentPage === 'index') redirectToStatus('blank');
-    return;
-  }
+        const init = () => {
+          const saved = el.style.transition;
+          el.style.transition = 'none';
+          setHeight();
+          requestAnimationFrame(() => { el.style.transition = saved || ''; });
+        };
 
-  try {
-    const status = await fetchStatus(user.id, tg.initData);
-    if (redirectToStatus(status)) return;
-  } catch (err) {
-    console.error('Status check failed:', err);
+        el.addEventListener('input', () => {
+          setHeight();
+        });
 
-    if (currentPage === 'index') {
-      showAppMessage(
-        'Не удалось получить статус заявки. Проверь подключение Google Таблицы.'
-      );
-      return;
-    }
-  }
+        init();
+      };
 
-  if (currentPage === 'blank') {
-    bindApplicationForm(tg, user);
-  }
-}
+      const updateCounter = (el) => {
+        if (!el.name || el.maxLength <= 0) return;
+        const counter = document.querySelector(`[data-counter="${el.name}"]`);
+        if (!counter) return;
+        counter.textContent = `${el.value.length}/${el.maxLength}`;
+      };
 
-document.addEventListener('DOMContentLoaded', initApp);
+      const attachCounters = (nodeList) => {
+        nodeList.forEach((el) => {
+          updateCounter(el);
+          el.addEventListener('input', () => updateCounter(el));
+        });
+      };
+
+      document.querySelectorAll('.textarea').forEach(autoGrow);
+      attachCounters(document.querySelectorAll('.textarea, .input'));
+
+      const audioManager = (() => {
+        const makePool = (src, size = 4, baseVolume = 0.16) => {
+          const pool = Array.from({ length: size }, () => {
+            const a = new Audio(src);
+            a.preload = 'auto';
+            a.volume = baseVolume;
+            return a;
+          });
+          let idx = 0;
+          const prime = () => {
+            pool.forEach((a) => {
+              const restore = () => { a.pause(); a.currentTime = 0; a.muted = false; };
+              a.muted = true;
+              const p = a.play();
+              if (p && typeof p.then === 'function') p.then(restore).catch(restore);
+              else restore();
+            });
+          };
+          const play = (volume = baseVolume) => {
+            const a = pool[idx];
+            idx = (idx + 1) % pool.length;
+            try {
+              a.currentTime = 0;
+              a.volume = volume;
+              const p = a.play();
+              if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (_) {
+              /* ignore */
+            }
+          };
+          return { play, prime };
+        };
+
+        const pools = {
+          click: makePool('/assets/sounds/click.mp3', 5, 0.14),
+          deny: makePool('/assets/sounds/deny.mp3', 3, 0.16),
+        };
+
+        let unlocked = false;
+        const unlock = () => {
+          if (unlocked) return;
+          unlocked = true;
+          Object.values(pools).forEach((p) => p.prime());
+        };
+
+        window.addEventListener('pointerdown', unlock, { passive: true, once: true });
+        window.addEventListener('keydown', unlock, { passive: true, once: true });
+
+        return {
+          play(name, volume) {
+            const pool = pools[name];
+            if (!pool) return;
+            pool.play(volume);
+          },
+        };
+      })();
+
+      const bindAudio = () => {
+        document.querySelectorAll('.input, .textarea').forEach((el) => {
+          el.addEventListener('focus', () => audioManager.play('click', 0.14));
+          el.addEventListener('input', () => {
+            audioManager.play('click', 0.12);
+            syncSubmitState();
+          });
+        });
+        document.querySelectorAll('.pill input').forEach((el) => {
+          el.addEventListener('change', () => {
+            audioManager.play('click', 0.16);
+            syncSubmitState();
+          });
+        });
+      };
+
+      const ageInput = document.querySelector('input[name="age"]');
+      if (ageInput) {
+        ageInput.addEventListener('input', () => {
+          const digits = ageInput.value.replace(/\D/g, '').slice(0, 2);
+          if (digits !== ageInput.value) ageInput.value = digits;
+          syncSubmitState();
+        });
+      }
+
+      syncSubmitState();
+      bindAudio();
+      const startSnow = (id, density = 1) => {
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const flakes = [];
+        const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        let maxFlakes = 0;
+        const wind = { value: 0, target: 0, lastShift: performance.now(), cadence: 2200 + Math.random() * 900 };
+
+        const createFlake = (startY) => {
+          const layerChance = Math.random();
+          const layer = layerChance > 0.65 ? 'near' : layerChance > 0.3 ? 'mid' : 'far';
+          const depth = layer === 'near' ? 1 : layer === 'mid' ? 0.72 : 0.52;
+          return {
+            x: Math.random() * width,
+            y: typeof startY === 'number' ? startY : Math.random() * height,
+            r: (0.9 + Math.random() * 2.2) * depth,
+            speed: (0.08 + Math.random() * 0.55) * depth,
+            drift: (Math.random() - 0.5) * 0.22 * depth,
+            sway: Math.random() * Math.PI * 2,
+            swaySpeed: (0.0006 + Math.random() * 0.0015) * depth,
+            twinklePhase: Math.random() * Math.PI * 2,
+            twinkleSpeed: 0.0007 + Math.random() * 0.0013,
+            opacity: 0.35 + Math.random() * 0.5,
+            depth,
+          };
+        };
+
+        const resizeSnow = () => {
+          width = window.innerWidth;
+          height = window.innerHeight;
+          maxFlakes = Math.min(150 * density, Math.floor((width / 4.4) * density));
+          canvas.width = Math.floor(width * dpr);
+          canvas.height = Math.floor(height * dpr);
+          canvas.style.width = '100%';
+          canvas.style.height = '100%';
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          while (flakes.length < maxFlakes) flakes.push(createFlake(Math.random() * height));
+          flakes.length = Math.floor(maxFlakes);
+        };
+
+        let lastFrame = performance.now();
+        const renderSnow = (now) => {
+          const delta = Math.min(32, now - lastFrame);
+          lastFrame = now;
+          const driftScale = delta / 16;
+
+          if (now - wind.lastShift > wind.cadence) {
+            wind.target = (Math.random() - 0.5) * 0.22;
+            wind.lastShift = now;
+            wind.cadence = 2200 + Math.random() * 1200;
+          }
+          wind.value += (wind.target - wind.value) * 0.0016 * delta;
+
+          ctx.clearRect(0, 0, width, height);
+
+          flakes.sort((a, b) => a.depth - b.depth);
+          for (let i = 0; i < flakes.length; i++) {
+            const flake = flakes[i];
+            flake.sway += flake.swaySpeed * delta;
+            flake.twinklePhase += flake.twinkleSpeed * delta;
+            const swayOffset = Math.sin(flake.sway) * (0.5 + flake.r * 0.035);
+            flake.x += swayOffset + (flake.drift + wind.value) * driftScale;
+            flake.y += (flake.speed + flake.r * 0.025) * driftScale;
+
+            if (flake.y > height + 10 || flake.x < -12 || flake.x > width + 12) {
+              flakes[i] = createFlake(-16);
+              continue;
+            }
+
+            const flicker = 0.82 + Math.sin(flake.twinklePhase) * 0.18;
+            ctx.globalAlpha = Math.min(1, Math.max(0.1, flake.opacity * flicker));
+            ctx.beginPath();
+            ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.2)';
+            ctx.shadowBlur = 3 + flake.r * 2;
+            ctx.arc(flake.x, flake.y, flake.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+
+          requestAnimationFrame(renderSnow);
+        };
+
+        resizeSnow();
+        requestAnimationFrame(renderSnow);
+        window.addEventListener('resize', resizeSnow);
+      };
+
+      const setupPageExit = () => {
+        const leave = () => document.body.classList.add('page-leave');
+        window.addEventListener('beforeunload', leave);
+        document.querySelectorAll('a[href]').forEach((a) => {
+          a.addEventListener('click', (e) => {
+            const href = a.getAttribute('href') || '';
+            if (href.startsWith('#')) return;
+            document.body.classList.add('page-leave');
+          });
+        });
+      };
+
+      setupPageExit();
+    });
+  </script>
+</body>
+</html>
