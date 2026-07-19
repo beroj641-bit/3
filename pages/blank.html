@@ -725,30 +725,33 @@
         submitBtn.setAttribute('aria-disabled', filled ? 'false' : 'true');
       };
 
-      const setupSpoonNicknames = () => {
-        const nicknameInputs = document.querySelectorAll(
-          'input[name="display_name"], input[name="mc_nick"]'
+      const setupSpoonReplacement = () => {
+        const textFields = document.querySelectorAll(
+          'input[name="display_name"], textarea[name="about"], input[name="mc_nick"], textarea[name="bot_comment"]'
         );
 
-        nicknameInputs.forEach((input) => {
-          const replaceSpoonNickname = () => {
-            const value = input.value.trim();
+        textFields.forEach((field) => {
+          const replaceSpoonWord = () => {
+            const replacedValue = field.value.replace(/ложка/giu, '🥄');
+            if (replacedValue !== field.value) field.value = replacedValue;
 
-            if (value.toLocaleLowerCase('ru-RU') === 'ложка' || value === '🥄') {
-              input.value = '🥄';
-              input.dataset.submitValue = 'loshka';
+            const isNicknameField =
+              field.name === 'display_name' || field.name === 'mc_nick';
+
+            if (isNicknameField && field.value.trim() === '🥄') {
+              field.dataset.submitValue = 'loshka';
               return;
             }
 
-            delete input.dataset.submitValue;
+            delete field.dataset.submitValue;
           };
 
-          input.addEventListener('input', replaceSpoonNickname);
-          replaceSpoonNickname();
+          field.addEventListener('input', replaceSpoonWord);
+          replaceSpoonWord();
         });
       };
 
-      setupSpoonNicknames();
+      setupSpoonReplacement();
 
       const autoGrow = (el) => {
         const minH = 44;
@@ -979,15 +982,4 @@
         window.addEventListener('beforeunload', leave);
         document.querySelectorAll('a[href]').forEach((a) => {
           a.addEventListener('click', (e) => {
-            const href = a.getAttribute('href') || '';
-            if (href.startsWith('#')) return;
-            document.body.classList.add('page-leave');
-          });
-        });
-      };
-
-      setupPageExit();
-    });
-  </script>
-</body>
-</html>
+            const href = a.getAttribute('href') ||
