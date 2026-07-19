@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Заявка отклонена</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
       --bg: #0a0a0a;
@@ -229,16 +230,10 @@
       window.addEventListener('resize', resizeSnow);
     };
 
-    window.addEventListener('DOMContentLoaded', () => {
-      startSnow('snowCanvasBack', 0.6);
-      startSnow('snowCanvasFront', 1);
-    });
   </script>
-    <script src="/js/app.js" defer></script>
+    <script src="/js/app.js?v=20260719-4" defer></script>
 </head>
 <body>
-  <canvas id="snowCanvasBack" class="snow-canvas back" aria-hidden="true"></canvas>
-  <canvas id="snowCanvasFront" class="snow-canvas front" aria-hidden="true"></canvas>
   <div class="card">
     <img class="status-gif" src="/assets/images/Снимок экрана 2025-12-31 в 18.28.09-Photoroom.png" alt="Заявка отклонена" loading="lazy" decoding="async">
     <h1>Заявка отклонена</h1>
