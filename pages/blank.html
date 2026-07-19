@@ -21,7 +21,7 @@
       }
     })();
   </script>
-  <script src="/js/app.js?v=20260719-1" defer></script>
+  <script src="/js/app.js?v=20260719-2" defer></script>
   <style>
     :root {
       --bg: #0a0a0a;
@@ -347,6 +347,24 @@
       border-right-color: #181818;
       transform: translate(-50%, -55%) rotate(42deg) scale(1);
     }
+    .pill.radio-pill input {
+      border-radius: 50%;
+    }
+    .pill.radio-pill input::after {
+      top: 50%;
+      left: 50%;
+      width: 10px;
+      height: 10px;
+      border: 0;
+      border-radius: 50%;
+      background: #181818;
+      transform: translate(-50%, -50%) scale(0.4);
+    }
+    .pill.radio-pill input:checked::after {
+      opacity: 1;
+      border: 0;
+      transform: translate(-50%, -50%) scale(1);
+    }
     .pill-text {
       transition: color .2s ease, transform .2s ease;
       display: inline-block;
@@ -365,7 +383,8 @@
       z-index: 2;
     }
     .actions.age-escape-zone {
-      min-height: 48px;
+      min-height: 150px;
+      overflow: visible;
     }
     .submit-btn {
       width: 100%;
@@ -385,8 +404,10 @@
         background .18s ease;
     }
     .submit-btn.is-escaping {
-      width: 55%;
+      width: 52%;
       align-self: flex-start;
+      position: relative;
+      z-index: 4;
       will-change: transform;
       transition:
         width .2s ease,
@@ -549,6 +570,7 @@
             <div class="pills">
               <label class="pill"><input type="checkbox" name="play_with_webcam" value="cam"><span class="pill-text">вебка</span></label>
               <label class="pill"><input type="checkbox" name="play_with_voice" value="voice"><span class="pill-text">войс</span></label>
+              <label class="pill radio-pill"><input type="radio" name="play_chat_only" value="chat"><span class="pill-text">Только чат</span></label>
             </div>
           </div>
 
@@ -576,8 +598,9 @@
       const formMessageEl = document.getElementById('formMessage');
       const submitBtn = document.getElementById('submitBtn');
       const requiredNames = ['display_name', 'age', 'about', 'mc_nick'];
-      const checkboxNames = ['play_with_webcam', 'play_with_voice'];
+      const playOptionNames = ['play_with_webcam', 'play_with_voice', 'play_chat_only'];
       let isSubmitting = false;
+      let forbiddenAgeActive = false;
 
       const setupSecretLetters = () => {
         const introText = document.querySelector('.intro-text');
@@ -753,7 +776,7 @@
           const el = document.querySelector(`[name="${name}"]`);
           return el && el.value.trim().length > 0;
         });
-        const anyChecked = checkboxNames.some((name) => {
+        const anyChecked = playOptionNames.some((name) => {
           const el = document.querySelector(`[name="${name}"]`);
           return el && el.checked;
         });
@@ -764,7 +787,10 @@
         if (!submitBtn) return;
         const filled = allRequiredFilled() && !isSubmitting;
         submitBtn.disabled = !filled;
-        submitBtn.setAttribute('aria-disabled', filled ? 'false' : 'true');
+        submitBtn.setAttribute(
+          'aria-disabled',
+          filled && !forbiddenAgeActive ? 'false' : 'true'
+        );
       };
 
       const setupSpoonReplacement = () => {
@@ -804,6 +830,34 @@
         setupSpoonReplacement();
       } catch (error) {
         console.error('Не удалось запустить замену слова «ложка»:', error);
+      }
+
+      const setupPlayOptions = () => {
+        const chatOnly = document.querySelector('input[name="play_chat_only"]');
+        const liveOptions = Array.from(document.querySelectorAll(
+          'input[name="play_with_webcam"], input[name="play_with_voice"]'
+        ));
+        if (!chatOnly) return;
+
+        chatOnly.addEventListener('change', () => {
+          if (chatOnly.checked) {
+            liveOptions.forEach((option) => { option.checked = false; });
+          }
+          syncSubmitState();
+        });
+
+        liveOptions.forEach((option) => {
+          option.addEventListener('change', () => {
+            if (option.checked) chatOnly.checked = false;
+            syncSubmitState();
+          });
+        });
+      };
+
+      try {
+        setupPlayOptions();
+      } catch (error) {
+        console.error('Не удалось запустить варианты игры:', error);
       }
 
       const autoGrow = (el) => {
@@ -889,6 +943,23 @@
           click: makePool('/assets/sounds/click.mp3', 5, 0.14),
           deny: makePool('/assets/sounds/deny.mp3', 3, 0.16),
         };
+        const layeredSounds = new Set();
+
+        const playLayered = (src, volume = 0.3) => {
+          const sound = new Audio(src);
+          sound.preload = 'auto';
+          sound.volume = volume;
+          layeredSounds.add(sound);
+
+          const cleanup = () => layeredSounds.delete(sound);
+          sound.addEventListener('ended', cleanup, { once: true });
+          sound.addEventListener('error', cleanup, { once: true });
+
+          const playPromise = sound.play();
+          if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(cleanup);
+          }
+        };
 
         let unlocked = false;
         const unlock = () => {
@@ -906,6 +977,7 @@
             if (!pool) return;
             pool.play(volume);
           },
+          playLayered,
         };
       })();
 
@@ -928,58 +1000,110 @@
       try {
         const ageInput = document.querySelector('input[name="age"]');
         if (ageInput) {
-        const actions = submitBtn && submitBtn.closest('.actions');
-        const forbiddenAges = new Set(['67', '69']);
-        let forbiddenAgeActive = false;
+          const actions = submitBtn && submitBtn.closest('.actions');
+          const forbiddenAges = new Set(['67', '69']);
+          let lastBoomAt = 0;
 
-        const resetEscapingButton = () => {
-          if (!submitBtn) return;
-          submitBtn.classList.remove('is-escaping');
-          submitBtn.style.removeProperty('transform');
-          delete submitBtn.dataset.escapeSide;
-          if (actions) actions.classList.remove('age-escape-zone');
-        };
+          const resetEscapingButton = () => {
+            if (!submitBtn) return;
+            submitBtn.classList.remove('is-escaping');
+            submitBtn.style.removeProperty('transform');
+            delete submitBtn.dataset.escapePosition;
+            if (actions) actions.classList.remove('age-escape-zone');
+          };
 
-        const updateForbiddenAge = () => {
-          forbiddenAgeActive = forbiddenAges.has(ageInput.value);
-          ageInput.classList.toggle('age-forbidden', forbiddenAgeActive);
+          const playBoom = () => {
+            const now = performance.now();
+            if (now - lastBoomAt < 110) return;
+            lastBoomAt = now;
+            audioManager.playLayered('/assets/sounds/boom.mp3', 0.38);
+          };
 
-          if (!submitBtn || !actions) return;
-          submitBtn.classList.toggle('is-escaping', forbiddenAgeActive);
-          actions.classList.toggle('age-escape-zone', forbiddenAgeActive);
+          const moveButtonAway = (event) => {
+            if (!forbiddenAgeActive || !submitBtn || !actions) return;
 
-          if (!forbiddenAgeActive) resetEscapingButton();
-        };
+            const zone = actions.getBoundingClientRect();
+            const buttonWidth = submitBtn.offsetWidth;
+            const buttonHeight = submitBtn.offsetHeight;
+            const maxX = Math.max(0, zone.width - buttonWidth);
+            const maxY = Math.max(0, zone.height - buttonHeight);
+            const cursorX = Number.isFinite(event.clientX)
+              ? event.clientX - zone.left
+              : zone.width / 2;
+            const cursorY = Number.isFinite(event.clientY)
+              ? event.clientY - zone.top
+              : zone.height / 2;
+            const positions = [
+              { name: 'top-left', x: 0, y: 0 },
+              { name: 'top-right', x: maxX, y: 0 },
+              { name: 'bottom-left', x: 0, y: maxY },
+              { name: 'bottom-right', x: maxX, y: maxY },
+            ];
 
-        document.addEventListener('pointermove', (event) => {
-          if (!forbiddenAgeActive || !submitBtn || !actions) return;
+            positions.sort((left, right) => {
+              const leftDistance = Math.hypot(
+                left.x + buttonWidth / 2 - cursorX,
+                left.y + buttonHeight / 2 - cursorY
+              );
+              const rightDistance = Math.hypot(
+                right.x + buttonWidth / 2 - cursorX,
+                right.y + buttonHeight / 2 - cursorY
+              );
+              return rightDistance - leftDistance;
+            });
 
-          const zone = actions.getBoundingClientRect();
-          const isNearButton =
-            event.clientX >= zone.left - 70 &&
-            event.clientX <= zone.right + 70 &&
-            event.clientY >= zone.top - 70 &&
-            event.clientY <= zone.bottom + 70;
+            const target = positions.find(
+              (position) => position.name !== submitBtn.dataset.escapePosition
+            ) || positions[0];
+            submitBtn.dataset.escapePosition = target.name;
+            submitBtn.style.transform =
+              `translate3d(${target.x}px, ${target.y}px, 0)`;
+          };
 
-          if (!isNearButton) return;
+          const updateForbiddenAge = () => {
+            forbiddenAgeActive = forbiddenAges.has(ageInput.value);
+            ageInput.classList.toggle('age-forbidden', forbiddenAgeActive);
 
-          const nextSide = event.clientX < zone.left + zone.width / 2
-            ? 'right'
-            : 'left';
-          if (submitBtn.dataset.escapeSide === nextSide) return;
+            if (submitBtn && actions) {
+              submitBtn.classList.toggle('is-escaping', forbiddenAgeActive);
+              actions.classList.toggle('age-escape-zone', forbiddenAgeActive);
+            }
 
-          submitBtn.dataset.escapeSide = nextSide;
-          submitBtn.style.transform = nextSide === 'right'
-            ? 'translateX(82%)'
-            : 'translateX(0)';
-        }, { passive: true });
+            if (!forbiddenAgeActive) resetEscapingButton();
+            syncSubmitState();
+          };
 
-        ageInput.addEventListener('input', () => {
-          const digits = ageInput.value.replace(/\D/g, '').slice(0, 2);
-          if (digits !== ageInput.value) ageInput.value = digits;
-          updateForbiddenAge();
-          syncSubmitState();
-        });
+          document.addEventListener('pointermove', (event) => {
+            if (!forbiddenAgeActive || !submitBtn) return;
+
+            const buttonRect = submitBtn.getBoundingClientRect();
+            const aimPadding = 24;
+            const isAiming =
+              event.clientX >= buttonRect.left - aimPadding &&
+              event.clientX <= buttonRect.right + aimPadding &&
+              event.clientY >= buttonRect.top - aimPadding &&
+              event.clientY <= buttonRect.bottom + aimPadding;
+
+            if (!isAiming) return;
+            playBoom();
+            moveButtonAway(event);
+          }, { passive: true });
+
+          if (submitBtn) {
+            submitBtn.addEventListener('click', (event) => {
+              if (!forbiddenAgeActive) return;
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              playBoom();
+              moveButtonAway(event);
+            }, true);
+          }
+
+          ageInput.addEventListener('input', () => {
+            const digits = ageInput.value.replace(/\D/g, '').slice(0, 2);
+            if (digits !== ageInput.value) ageInput.value = digits;
+            updateForbiddenAge();
+          });
 
           updateForbiddenAge();
         }
