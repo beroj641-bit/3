@@ -246,6 +246,10 @@
       line-height: 1.5;
       will-change: height;
     }
+    .textarea[name="about"] {
+      height: 120px;
+      min-height: 120px;
+    }
     .textarea::-webkit-scrollbar { width: 0; height: 0; }
     .textarea { scrollbar-width: none; -ms-overflow-style: none; }
     .field.countered .textarea {
@@ -620,7 +624,7 @@
           introText.classList.remove('secret-no-transition');
         };
 
-        const switchImage = () => {
+        const switchImage = (onSuccess, onError) => {
           const replacementSrc = '/assets/images/images.png';
           const replacement = new Image();
 
@@ -631,12 +635,14 @@
               image.alt = 'Секретная иллюстрация RealmSMP';
               requestAnimationFrame(() => {
                 image.classList.remove('secret-switching');
+                if (typeof onSuccess === 'function') onSuccess();
               });
             }, 220);
           }, { once: true });
 
           replacement.addEventListener('error', () => {
             console.error('Не найден файл /assets/images/images.png');
+            if (typeof onError === 'function') onError();
           }, { once: true });
 
           replacement.src = replacementSrc;
@@ -665,10 +671,18 @@
 
           if (enteredLetters.size === secretLetters.length) {
             clearErrorImmediately();
-            introText.classList.add('secret-complete');
             secretLetters.forEach((item) => item.classList.remove('secret-hit'));
             introText.removeEventListener('click', handleLetterClick);
-            switchImage();
+            switchImage(
+              () => {
+                introText.classList.add('secret-complete');
+              },
+              () => {
+                enteredLetters.clear();
+                introText.addEventListener('click', handleLetterClick);
+                flashError();
+              }
+            );
           }
         };
 
@@ -941,4 +955,39 @@
               continue;
             }
 
-            const flicker = 0.82 + Math.sin(flake.twinkle
+            const flicker = 0.82 + Math.sin(flake.twinklePhase) * 0.18;
+            ctx.globalAlpha = Math.min(1, Math.max(0.1, flake.opacity * flicker));
+            ctx.beginPath();
+            ctx.fillStyle = 'rgba(255, 255, 255, 1)';
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.2)';
+            ctx.shadowBlur = 3 + flake.r * 2;
+            ctx.arc(flake.x, flake.y, flake.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+
+          requestAnimationFrame(renderSnow);
+        };
+
+        resizeSnow();
+        requestAnimationFrame(renderSnow);
+        window.addEventListener('resize', resizeSnow);
+      };
+
+      const setupPageExit = () => {
+        const leave = () => document.body.classList.add('page-leave');
+        window.addEventListener('beforeunload', leave);
+        document.querySelectorAll('a[href]').forEach((a) => {
+          a.addEventListener('click', (e) => {
+            const href = a.getAttribute('href') || '';
+            if (href.startsWith('#')) return;
+            document.body.classList.add('page-leave');
+          });
+        });
+      };
+
+      setupPageExit();
+    });
+  </script>
+</body>
+</html>
