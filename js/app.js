@@ -7,8 +7,138 @@
  * - корректно открывает ссылки t.me внутри Telegram.
  */
 
+const APP_VERSION = '20260719-4';
 const BASE_API_URL =
   window.__ENV && window.__ENV.API_BASE ? window.__ENV.API_BASE : '/api/gas';
+
+const diagnosticEntries = [];
+
+function redactDiagnosticValue(key, value) {
+  if (/^(init_?data|bot_?token|hash|authorization)$/i.test(String(key))) {
+    const length = typeof value === 'string' ? value.length : 0;
+    return value ? `[скрыто, ${length} симв.]` : '[нет]';
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .replace(/(init_?data=)[^&\s]+/gi, '$1[скрыто]')
+      .replace(/(hash=)[a-f0-9]+/gi, '$1[скрыто]')
+      .slice(0, 1800);
+  }
+
+  return value;
+}
+
+function diagnosticJson(data) {
+  if (data === undefined) return '';
+
+  try {
+    return JSON.stringify(data, redactDiagnosticValue);
+  } catch (_) {
+    return String(data);
+  }
+}
+
+function renderDiagnosticLog() {
+  const output = document.getElementById('diagnosticOutput');
+  if (!output) return;
+  output.textContent = diagnosticEntries.join('\n');
+  output.scrollTop = output.scrollHeight;
+}
+
+function addDiagnostic(event, data, level = 'INFO') {
+  const time = new Date().toISOString();
+  const details = diagnosticJson(data);
+  const line = `[${time}] [${level}] ${event}${details ? ` ${details}` : ''}`;
+  diagnosticEntries.push(line);
+  if (diagnosticEntries.length > 120) diagnosticEntries.shift();
+  renderDiagnosticLog();
+
+  const method = level === 'ERROR' ? 'error' : level === 'WARN' ? 'warn' : 'log';
+  console[method](`[Realm diagnostic] ${event}`, data === undefined ? '' : data);
+}
+
+function getDiagnosticText() {
+  return [
+    'RealmSMP Mini App — диагностика',
+    `Версия: ${APP_VERSION}`,
+    `Страница: ${window.location.origin}${window.location.pathname}`,
+    `User-Agent: ${navigator.userAgent}`,
+    '',
+    ...diagnosticEntries,
+  ].join('\n');
+}
+
+function openDiagnosticPanel() {
+  const panel = document.getElementById('diagnosticPanel');
+  if (panel) panel.open = true;
+}
+
+async function copyDiagnosticLog() {
+  const text = getDiagnosticText();
+  const status = document.getElementById('diagnosticCopyStatus');
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      const copied = document.execCommand('copy');
+      area.remove();
+      if (!copied) throw new Error('clipboard_copy_failed');
+    }
+
+    if (status) status.textContent = 'Лог скопирован — пришли его в чат.';
+  } catch (err) {
+    if (status) status.textContent = 'Не удалось скопировать. Выдели текст лога вручную.';
+    addDiagnostic('diagnostic_copy_failed', { message: err && err.message }, 'WARN');
+  }
+}
+
+function safeDiagnosticUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl, window.location.origin);
+    const action = url.searchParams.get('action');
+    url.search = action ? `?action=${encodeURIComponent(action)}` : '';
+    return url.href;
+  } catch (_) {
+    return String(rawUrl || '').split('?')[0];
+  }
+}
+
+function setupDiagnostics() {
+  const copyButton = document.getElementById('copyDiagnosticLog');
+  if (copyButton) copyButton.addEventListener('click', copyDiagnosticLog);
+
+  window.addEventListener('error', (event) => {
+    addDiagnostic('window_error', {
+      message: event.message,
+      file: event.filename ? event.filename.split('/').pop() : '',
+      line: event.lineno,
+    }, 'ERROR');
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    addDiagnostic('unhandled_rejection', {
+      name: reason && reason.name,
+      message: reason && reason.message ? reason.message : String(reason),
+    }, 'ERROR');
+  });
+
+  addDiagnostic('app_started', {
+    version: APP_VERSION,
+    page: getCurrentPage(),
+    api: safeDiagnosticUrl(BASE_API_URL),
+    online: navigator.onLine,
+  });
+}
 
 const STATUS_PAGES = {
   blank: 'blank.html',
@@ -90,20 +220,35 @@ function createApiUrl(action) {
   return url;
 }
 
-async function parseApiResponse(res, errorCode) {
+async function parseApiResponse(res, errorCode, requestName) {
   const responseText = await res.text();
   let json;
+
+  addDiagnostic(`${requestName}_response`, {
+    http_status: res.status,
+    http_ok: res.ok,
+    url: safeDiagnosticUrl(res.url),
+    content_type: res.headers.get('content-type') || '',
+    proxy: res.headers.get('x-realm-proxy') || '',
+    upstream_status: res.headers.get('x-realm-upstream-status') || '',
+    body: responseText || '[пустой ответ]',
+  }, res.ok ? 'INFO' : 'ERROR');
 
   try {
     json = JSON.parse(responseText);
   } catch (_) {
     console.error('API returned invalid JSON:', res.status, responseText);
-    throw new Error(errorCode);
+    const error = new Error(errorCode);
+    error.diagnosticCode = `${requestName}_invalid_json`;
+    throw error;
   }
 
   if (!res.ok || json.status !== 'ok') {
     console.error('API request failed:', res.status, json);
-    throw new Error(json.error || errorCode);
+    const error = new Error(json.error || errorCode);
+    error.diagnosticCode = json.error || errorCode;
+    error.diagnosticDetails = json.diagnostic || json.detail || '';
+    throw error;
   }
 
   return json;
@@ -115,25 +260,75 @@ async function fetchStatus(telegramId, initData) {
   url.searchParams.set('init_data', initData);
   url.searchParams.set('t', String(Date.now()));
 
-  const res = await fetch(url.href, {
-    method: 'GET',
-    cache: 'no-store',
+  addDiagnostic('status_request', {
+    url: safeDiagnosticUrl(url.href),
+    telegram_id_suffix: String(telegramId).slice(-4),
+    init_data_length: String(initData || '').length,
   });
 
-  const json = await parseApiResponse(res, 'status_fetch_failed');
+  let res;
+  try {
+    res = await fetch(url.href, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+  } catch (err) {
+    addDiagnostic('status_network_error', {
+      name: err && err.name,
+      message: err && err.message,
+      online: navigator.onLine,
+    }, 'ERROR');
+    throw err;
+  }
+
+  const json = await parseApiResponse(res, 'status_fetch_failed', 'status');
   return json.data.status;
 }
 
 async function submitApplication(data) {
   const url = createApiUrl('submit');
-  const res = await fetch(url.href, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify(data),
-    cache: 'no-store',
+  addDiagnostic('submit_request', {
+    request_id: data.request_id,
+    url: safeDiagnosticUrl(url.href),
+    init_data_length: String(data.init_data || '').length,
+    field_lengths: {
+      display_name: String(data.display_name || '').length,
+      age: String(data.age || '').length,
+      about: String(data.about || '').length,
+      mc_nick: String(data.mc_nick || '').length,
+      bot_comment: String(data.bot_comment || '').length,
+    },
+    play_modes: {
+      chat_only: data.play_chat_only === true,
+      webcam: data.play_with_webcam === true,
+      voice: data.play_with_voice === true,
+    },
   });
 
-  const json = await parseApiResponse(res, 'submit_failed');
+  let res;
+  try {
+    res = await fetch(url.href, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(data),
+      cache: 'no-store',
+    });
+  } catch (err) {
+    addDiagnostic('submit_network_error', {
+      request_id: data.request_id,
+      name: err && err.name,
+      message: err && err.message,
+      online: navigator.onLine,
+    }, 'ERROR');
+    throw err;
+  }
+
+  const json = await parseApiResponse(res, 'submit_failed', 'submit');
+  addDiagnostic('submit_success', {
+    request_id: data.request_id,
+    status: json.data && json.data.status,
+    diagnostic: json.diagnostic || '',
+  });
   return json.data.status;
 }
 
@@ -209,6 +404,7 @@ function bindApplicationForm(tg, user) {
     const formData = collectFormData();
     const validationError = validateForm(formData);
     if (validationError) {
+      addDiagnostic('submit_validation_failed', { reason: validationError }, 'WARN');
       showAppMessage(validationError);
       return;
     }
@@ -221,7 +417,9 @@ function bindApplicationForm(tg, user) {
     showAppMessage('');
 
     try {
+      const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const payload = {
+        request_id: requestId,
         init_data: tg.initData,
         telegram_id: user.id,
         telegram_username: user.username || '',
@@ -233,8 +431,16 @@ function bindApplicationForm(tg, user) {
       redirectToStatus(status);
     } catch (err) {
       console.error('Application submit failed:', err);
+      addDiagnostic('submit_failed', {
+        code: err && (err.diagnosticCode || err.message),
+        message: err && err.message,
+        details: err && err.diagnosticDetails,
+      }, 'ERROR');
+      openDiagnosticPanel();
       showAppMessage(
-        'Не удалось отправить заявку. Проверь настройку Google Apps Script и попробуй ещё раз.'
+        `Не удалось отправить заявку. Код: ${
+          (err && (err.diagnosticCode || err.message)) || 'unknown_error'
+        }. Скопируй лог из блока «Диагностика отправки».`
       );
       submitBtn.disabled = false;
       submitBtn.setAttribute('aria-disabled', 'false');
@@ -261,8 +467,29 @@ async function initApp() {
   const user = getTelegramUser(tg);
   const currentPage = getCurrentPage();
 
+  addDiagnostic('telegram_context', {
+    sdk_loaded: Boolean(tg),
+    init_data_present: Boolean(tg && tg.initData),
+    init_data_length: tg && tg.initData ? tg.initData.length : 0,
+    user_present: Boolean(user && user.id),
+    telegram_id_suffix: user && user.id ? String(user.id).slice(-4) : '',
+    platform: tg && tg.platform ? tg.platform : '',
+    version: tg && tg.version ? tg.version : '',
+  });
+
   if (!tg || !tg.initData || !user || !user.id) {
+    addDiagnostic('telegram_context_missing', {
+      sdk_loaded: Boolean(tg),
+      init_data_present: Boolean(tg && tg.initData),
+      user_present: Boolean(user && user.id),
+    }, 'ERROR');
     if (currentPage === 'index') redirectToStatus('blank');
+    if (currentPage === 'blank') {
+      showAppMessage(
+        'Telegram не передал данные для отправки. Открой анкету кнопкой Mini App внутри бота и скопируй диагностический лог.'
+      );
+      openDiagnosticPanel();
+    }
     return;
   }
 
@@ -271,6 +498,11 @@ async function initApp() {
     if (redirectToStatus(status)) return;
   } catch (err) {
     console.error('Status check failed:', err);
+    addDiagnostic('status_failed', {
+      code: err && (err.diagnosticCode || err.message),
+      message: err && err.message,
+      details: err && err.diagnosticDetails,
+    }, 'ERROR');
 
     if (currentPage === 'index') {
       showAppMessage(
@@ -285,4 +517,5 @@ async function initApp() {
   }
 }
 
+document.addEventListener('DOMContentLoaded', setupDiagnostics);
 document.addEventListener('DOMContentLoaded', initApp);
