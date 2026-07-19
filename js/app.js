@@ -168,9 +168,12 @@ function collectFormData() {
   const formData = {};
 
   document.querySelectorAll('input[name], textarea[name]').forEach((el) => {
-    formData[el.name] = el.type === 'checkbox'
-      ? el.checked
-      : (el.dataset.submitValue || el.value).trim();
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      formData[el.name] = el.checked;
+      return;
+    }
+
+    formData[el.name] = (el.dataset.submitValue || el.value).trim();
   });
 
   return formData;
@@ -189,8 +192,8 @@ function validateForm(data) {
     return 'Укажи другой возраст.';
   }
 
-  if (!data.play_with_webcam && !data.play_with_voice) {
-    return 'Выбери хотя бы один вариант: вебка или войс.';
+  if (!data.play_with_webcam && !data.play_with_voice && !data.play_chat_only) {
+    return 'Выбери хотя бы один вариант: вебка, войс или только чат.';
   }
 
   return '';
