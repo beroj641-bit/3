@@ -123,6 +123,13 @@
     .secret-letter.secret-hit {
       animation: secretLetterHit .38s ease;
     }
+    .intro-text.secret-complete .secret-letter {
+      pointer-events: none;
+      cursor: default;
+      animation: none;
+      transform: none;
+      filter: none;
+    }
     .intro-image-wrap {
       width: 100%;
       display: flex;
@@ -583,15 +590,12 @@
         splitIntoLetters(title, 'title');
         splitIntoLetters(hint, 'hint');
 
-        const sequence = [
-          introText.querySelector('[data-secret-line="title"][data-secret-n="1"]'),
-          introText.querySelector('[data-secret-line="title"][data-secret-n="2"]'),
-          introText.querySelector('[data-secret-line="hint"][data-secret-n="1"]'),
-        ];
+        const secretLetters = Array.from(
+          introText.querySelectorAll('[data-secret-n]')
+        );
+        if (!secretLetters.length) return;
 
-        if (sequence.some((letter) => !letter)) return;
-
-        let step = 0;
+        const enteredLetters = new Set();
         let errorTimer = 0;
 
         const flashError = () => {
@@ -630,18 +634,27 @@
           const letter = event.target.closest('.secret-letter');
           if (!letter || !introText.contains(letter)) return;
 
-          if (letter !== sequence[step]) {
+          const isSecretLetter = letter.hasAttribute('data-secret-n');
+          const wasAlreadyEntered = enteredLetters.has(letter);
+
+          if (!isSecretLetter || wasAlreadyEntered) {
+            enteredLetters.clear();
+            secretLetters.forEach((item) => item.classList.remove('secret-hit'));
             flashError();
             return;
           }
 
+          enteredLetters.add(letter);
           letter.classList.remove('secret-hit');
           void letter.offsetWidth;
           letter.classList.add('secret-hit');
           window.setTimeout(() => letter.classList.remove('secret-hit'), 400);
-          step += 1;
 
-          if (step === sequence.length) {
+          if (enteredLetters.size === secretLetters.length) {
+            window.clearTimeout(errorTimer);
+            introText.classList.remove('secret-error');
+            introText.classList.add('secret-complete');
+            secretLetters.forEach((item) => item.classList.remove('secret-hit'));
             introText.removeEventListener('click', handleLetterClick);
             switchImage();
           }
