@@ -252,6 +252,11 @@ async function initApp() {
   const user = getTelegramUser(tg);
   const currentPage = getCurrentPage();
 
+  if (!tg || !tg.initData || !user || !user.id) {
+    if (currentPage === 'index') redirectToStatus('blank');
+    return;
+  }
+
   try {
     const status = await fetchStatus(user.id, tg.initData);
     if (redirectToStatus(status)) return;
