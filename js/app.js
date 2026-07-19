@@ -185,6 +185,10 @@ function validateForm(data) {
     return 'Возраст должен состоять из одной или двух цифр.';
   }
 
+  if (data.age === '67' || data.age === '69') {
+    return 'Укажи другой возраст.';
+  }
+
   if (!data.play_with_webcam && !data.play_with_voice) {
     return 'Выбери хотя бы один вариант: вебка или войс.';
   }
