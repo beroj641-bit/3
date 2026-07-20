@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Заявка одобрена</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
       --bg: #0a0a0a;
@@ -123,29 +124,14 @@
       from { opacity: 0; transform: translateY(-22px); }
       to { opacity: 1; transform: translateY(-10px); }
     }
-    .mini-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 8px 14px;
-      border-radius: 999px;
-      border: 1px solid var(--stroke);
-      background: rgba(255,255,255,0.04);
+    .server-ip {
+      margin-top: 4px;
       color: var(--text);
-      font-weight: 700;
-      font-size: 13px;
-      text-decoration: none;
-      transition: transform .12s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
-      margin-top: 6px;
+      font-size: 12px;
+      line-height: 1.4;
+      opacity: 0.6;
       animation: dropIn 0.6s ease-out calc(var(--appear-start) + var(--appear-gap) + var(--appear-gap-tight) + var(--appear-gap)) both;
     }
-    .mini-btn:hover {
-      transform: translateY(-1px);
-      border-color: rgba(255,255,255,0.18);
-      background: rgba(255,255,255,0.06);
-      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-    }
-    .mini-btn:active { transform: translateY(0); }
     @keyframes shake {
       0% { transform: translate3d(0, 0, 0); }
       20% { transform: translate3d(-3px, 0, 0); }
@@ -156,6 +142,11 @@
     }
   </style>
   <script>
+    const startSnow = (id, density = 1) => {
+      const canvas = document.getElementById(id);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
       const flakes = [];
       const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -197,6 +188,11 @@
         flakes.length = Math.floor(maxFlakes);
       };
 
+      let lastFrame = performance.now();
+      const renderSnow = (now) => {
+        const delta = Math.min(32, now - lastFrame);
+        lastFrame = now;
+        const driftScale = delta / 16;
 
         if (now - wind.lastShift > wind.cadence) {
           wind.target = (Math.random() - 0.5) * 0.22;
@@ -240,16 +236,10 @@
       window.addEventListener('resize', resizeSnow);
     };
 
-    window.addEventListener('DOMContentLoaded', () => {
-      startSnow('snowCanvasBack', 0.6);
-      startSnow('snowCanvasFront', 1);
-    });
   </script>
-  <script src="/js/app.js" defer></script>
+  <script src="/js/app.js?v=20260720-2" defer></script>
 </head>
 <body>
-  <canvas id="snowCanvasBack" class="snow-canvas back" aria-hidden="true"></canvas>
-  <canvas id="snowCanvasFront" class="snow-canvas front" aria-hidden="true"></canvas>
   <div class="card">
     <div class="title-row">
       <img src="/assets/images/1234.gif" alt="Одобрено" loading="lazy" decoding="async">
@@ -261,7 +251,7 @@
       <div class="desc">
         <p>Твоя анкета прошла проверку — добро пожаловать!</p>
       </div>
-      <a class="mini-btn" href="http://t.me/realmSMP_bot/inf" target="_blank" rel="noopener noreferrer">что дальше</a>
+      <p class="server-ip">ip: -</p>
     </div>
   </div>
 </body>
