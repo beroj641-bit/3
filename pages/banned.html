@@ -188,12 +188,6 @@
         flakes.length = Math.floor(maxFlakes);
       };
 
-      let lastFrame = performance.now();
-      const renderSnow = (now) => {
-        const delta = Math.min(32, now - lastFrame);
-        lastFrame = now;
-        const driftScale = delta / 16;
-
         if (now - wind.lastShift > wind.cadence) {
           wind.target = (Math.random() - 0.5) * 0.22;
           wind.lastShift = now;
